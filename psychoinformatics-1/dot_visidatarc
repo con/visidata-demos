@@ -41,3 +41,116 @@ Sheet.addCommand(
     '_hide_degenerate_cols(sheet, threshold=0.95)',
     'hide columns where 95%+ values are degenerate',
 )
+
+
+# --- CURIE / Linked Data expansion ---
+
+import json
+import os
+import re
+import subprocess
+
+_curie_context_cache = {}
+
+
+def _load_curie_prefixes():
+    """Load prefix map from a JSON-LD context file.
+
+    Path is taken from $VISIDATA_JSONLD_CONTEXT env var.
+    Returns dict mapping prefix -> URI base.
+    """
+    ctx_path = os.environ.get('VISIDATA_JSONLD_CONTEXT', '')
+    if not ctx_path:
+        return {}
+    if ctx_path in _curie_context_cache:
+        return _curie_context_cache[ctx_path]
+
+    with open(ctx_path) as f:
+        doc = json.load(f)
+    ctx = doc.get('@context', doc)
+
+    # First pass: extract simple prefix -> URI string mappings
+    prefixes = {}
+    for k, v in ctx.items():
+        if k.startswith('@'):
+            continue
+        if isinstance(v, str):
+            prefixes[k] = v
+
+    # Second pass: extract aliases ({"@id": "prefix:local"} entries)
+    # and resolve them to full URIs
+    aliases = {}
+    for k, v in ctx.items():
+        if k.startswith('@'):
+            continue
+        if isinstance(v, dict) and '@id' in v:
+            aliases[k] = v['@id']
+
+    # Store @vocab as fallback
+    vocab = ctx.get('@vocab', '')
+
+    _curie_context_cache[ctx_path] = (prefixes, aliases, vocab)
+    return _curie_context_cache[ctx_path]
+
+
+def _expand_curie(value):
+    """Expand a CURIE like 'obo:IAO_0000010' to a full URL.
+
+    Uses prefix map from JSON-LD context, resolving aliases if needed.
+    """
+    value = str(value).strip()
+    loaded = _load_curie_prefixes()
+    if not loaded:
+        return None
+    prefixes, aliases, vocab = loaded
+
+    # If value is a known alias key (e.g. "ISSN" -> "dlthings:ISSN"),
+    # resolve the alias first
+    if value in aliases:
+        value = aliases[value]
+
+    # Try CURIE expansion: prefix:localpart
+    m = re.match(r'^([A-Za-z][\w.-]*):(.+)$', value)
+    if m:
+        pfx, local = m.group(1), m.group(2)
+        if pfx in prefixes:
+            return prefixes[pfx] + local
+        # prefix itself might be an alias
+        if pfx in aliases:
+            resolved = aliases[pfx]
+            # resolved might itself be a CURIE
+            rm = re.match(r'^([A-Za-z][\w.-]*):(.*)$', resolved)
+            if rm and rm.group(1) in prefixes:
+                return prefixes[rm.group(1)] + rm.group(2) + local
+            return resolved + local
+
+    # Fallback: @vocab + value
+    if vocab:
+        return vocab + value
+
+    return None
+
+
+def _open_curie(sheet):
+    """Expand current cell's CURIE and open in browser."""
+    val = sheet.cursorValue
+    if val is None or str(val).strip() == '':
+        vd.warning('empty cell')
+        return
+    url = _expand_curie(val)
+    if url:
+        vd.status(f'opening {url}')
+        subprocess.Popen(
+            ['xdg-open', url],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        vd.warning(f'cannot expand: {val}')
+
+
+Sheet.addCommand(
+    '', 'open-curie',
+    '_open_curie(sheet)',
+    'expand CURIE in current cell to URL and open in browser',
+)
