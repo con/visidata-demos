@@ -1,0 +1,43 @@
+
+def _is_degenerate(v):
+    """Check if a value is 'degenerate' -- empty or absent."""
+    if v is None:
+        return True
+    if isinstance(v, str) and v.strip() == '':
+        return True
+    if isinstance(v, (list, dict)) and len(v) == 0:
+        return True
+    return False
+
+
+def _hide_degenerate_cols(sheet, threshold=1.0):
+    """Hide columns where fraction of degenerate values >= threshold.
+
+    threshold=1.0 means hide only if ALL values are degenerate.
+    threshold=0.95 means hide if 95%+ values are degenerate.
+    """
+    nrows = len(sheet.rows)
+    if nrows == 0:
+        return
+    hidden = 0
+    for c in list(sheet.visibleCols):
+        ndegen = sum(1 for r in sheet.rows if _is_degenerate(c.getValue(r)))
+        if ndegen / nrows >= threshold:
+            c.hide()
+            hidden += 1
+    vd.status(f'hid {hidden} degenerate columns (threshold={threshold})')
+
+
+# No keybinding — invoke via Space then type the longname
+# (g/z/gz are the only prefix keys VisiData supports)
+Sheet.addCommand(
+    '', 'hide-degenerate-cols',
+    '_hide_degenerate_cols(sheet)',
+    'hide columns where all values are degenerate (None/empty/[]/{})',
+)
+
+Sheet.addCommand(
+    '', 'hide-mostly-degenerate-cols',
+    '_hide_degenerate_cols(sheet, threshold=0.95)',
+    'hide columns where 95%+ values are degenerate',
+)
