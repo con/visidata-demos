@@ -154,3 +154,270 @@ Sheet.addCommand(
     '_open_curie(sheet)',
     'expand CURIE in current cell to URL and open in browser',
 )
+
+
+# --- describe-curie: fetch machine-readable description ---
+
+import urllib.request
+import urllib.error
+import urllib.parse
+from collections import OrderedDict
+
+
+def _http_get_json(url, accept='application/json', timeout=30):
+    """Fetch URL with Accept header, follow redirects, return parsed JSON."""
+    req = urllib.request.Request(url, headers={
+        'Accept': accept,
+        'User-Agent': 'VisiData-CURIE-Resolver/1.0',
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = resp.read()
+        return json.loads(data)
+
+
+def _http_get_text(url, accept='text/turtle', timeout=30):
+    """Fetch URL with Accept header, follow redirects, return text."""
+    req = urllib.request.Request(url, headers={
+        'Accept': accept,
+        'User-Agent': 'VisiData-CURIE-Resolver/1.0',
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode('utf-8', errors='replace')
+
+
+def _describe_obo(uri):
+    """Resolve OBO/SIO term via EBI OLS4 API."""
+    path = uri.rstrip('/').split('/')[-1]  # e.g. "IAO_0000010"
+    ont_prefix = path.split('_')[0].lower()
+    api_url = (
+        f'https://www.ebi.ac.uk/ols4/api/ontologies/{ont_prefix}/terms'
+    )
+    data = _http_get_json(api_url + '?' + urllib.parse.urlencode({'iri': uri}))
+    terms = data.get('_embedded', {}).get('terms', [])
+    if not terms:
+        return None
+    t = terms[0]
+    result = OrderedDict()
+    result['label'] = t.get('label')
+    desc = t.get('description') or []
+    result['description'] = desc[0] if desc else None
+    result['ontology'] = t.get('ontology_prefix')
+    result['obo_id'] = t.get('obo_id')
+    result['iri'] = t.get('iri')
+    result['is_obsolete'] = t.get('is_obsolete')
+    syns = t.get('synonyms', [])
+    if syns:
+        result['synonyms'] = ', '.join(syns)
+    annot = t.get('annotation', {})
+    for k, v in annot.items():
+        result[f'annotation: {k}'] = '; '.join(v) if isinstance(v, list) else v
+    return result
+
+
+def _describe_orcid(uri):
+    """Resolve ORCID via JSON-LD content negotiation."""
+    data = _http_get_json(uri, accept='application/ld+json')
+    result = OrderedDict()
+    result['name'] = (
+        f"{data.get('givenName', '')} {data.get('familyName', '')}".strip()
+        or data.get('name')
+    )
+    result['type'] = data.get('@type')
+    result['id'] = data.get('@id')
+    aff = data.get('affiliation')
+    if isinstance(aff, dict):
+        result['affiliation'] = aff.get('name')
+    elif isinstance(aff, list) and aff:
+        result['affiliation'] = ', '.join(
+            a.get('name', str(a)) if isinstance(a, dict) else str(a)
+            for a in aff
+        )
+    result['url'] = data.get('url')
+    works = data.get('@reverse', {}).get('creator', [])
+    if works:
+        result['works_count'] = len(works)
+        # show first few titles
+        for i, w in enumerate(works[:5]):
+            result[f'work[{i}]'] = w.get('name', '')
+        if len(works) > 5:
+            result['...'] = f'({len(works) - 5} more works)'
+    return result
+
+
+def _describe_ror(uri):
+    """Resolve ROR via API."""
+    ror_id = uri.rstrip('/').split('/')[-1]
+    data = _http_get_json(f'https://api.ror.org/organizations/{ror_id}')
+    result = OrderedDict()
+    names = data.get('names', [])
+    result['name'] = names[0]['value'] if names else None
+    result['types'] = ', '.join(data.get('types', []))
+    locs = data.get('locations', [])
+    if locs:
+        geo = locs[0].get('geonames_details', {})
+        result['location'] = f"{geo.get('name', '')}, {geo.get('country_name', '')}"
+    result['established'] = data.get('established')
+    result['status'] = data.get('status')
+    result['id'] = data.get('id')
+    links = data.get('links', [])
+    for link in links:
+        result[f"link ({link.get('type', 'url')})"] = link.get('value')
+    ext = data.get('external_ids', [])
+    for e in ext:
+        result[f"external_id ({e.get('type', '')})"] = e.get('preferred') or ', '.join(e.get('all', []))
+    return result
+
+
+def _describe_doi(uri):
+    """Resolve DOI via CSL-JSON content negotiation."""
+    data = _http_get_json(uri, accept='application/vnd.citationstyles.csl+json')
+    result = OrderedDict()
+    result['title'] = data.get('title')
+    result['type'] = data.get('type')
+    authors = data.get('author', [])
+    result['authors'] = '; '.join(
+        f"{a.get('given', '')} {a.get('family', '')}".strip()
+        for a in authors
+    )
+    result['container'] = data.get('container-title')
+    result['publisher'] = data.get('publisher')
+    issued = data.get('issued', {}).get('date-parts', [[]])
+    if issued and issued[0]:
+        result['issued'] = '-'.join(str(p) for p in issued[0])
+    result['DOI'] = data.get('DOI')
+    result['volume'] = data.get('volume')
+    result['issue'] = data.get('issue')
+    result['ISSN'] = ', '.join(data.get('ISSN', []))
+    result['cited_by'] = data.get('is-referenced-by-count')
+    abstract = data.get('abstract', '')
+    if abstract:
+        # strip JATS XML tags
+        result['abstract'] = re.sub(r'<[^>]+>', '', abstract)[:500]
+    return result
+
+
+def _describe_spdx(uri):
+    """Resolve SPDX license via .json endpoint."""
+    license_id = uri.rstrip('/').split('/')[-1]
+    data = _http_get_json(f'https://spdx.org/licenses/{license_id}.json')
+    result = OrderedDict()
+    result['name'] = data.get('name')
+    result['license_id'] = data.get('licenseId')
+    result['is_osi_approved'] = data.get('isOsiApproved')
+    result['is_fsf_libre'] = data.get('isFsfLibre')
+    result['is_deprecated'] = data.get('isDeprecatedLicenseId')
+    see = data.get('seeAlso', [])
+    if see:
+        result['see_also'] = ', '.join(see)
+    return result
+
+
+def _describe_marcrel(uri):
+    """Resolve LOC marcrelator via JSON-LD."""
+    data = _http_get_json(uri + '.json', accept='application/json')
+    result = OrderedDict()
+    # LOC JSON structure uses arrays of objects with @value
+    if isinstance(data, list) and data:
+        for item in data:
+            for pred, vals in item.items():
+                # extract short predicate name
+                name = pred.rsplit('/', 1)[-1].rsplit('#', 1)[-1]
+                if isinstance(vals, list):
+                    texts = []
+                    for v in vals:
+                        if isinstance(v, dict):
+                            texts.append(v.get('@value') or v.get('@id', str(v)))
+                        else:
+                            texts.append(str(v))
+                    result[name] = '; '.join(texts)
+    return result or None
+
+
+def _describe_generic_jsonld(uri):
+    """Try JSON-LD or JSON content negotiation as fallback."""
+    for accept in ('application/ld+json', 'application/json'):
+        try:
+            data = _http_get_json(uri, accept=accept, timeout=15)
+            if isinstance(data, dict):
+                result = OrderedDict()
+                for k, v in data.items():
+                    if isinstance(v, (str, int, float, bool)):
+                        result[k] = v
+                    elif isinstance(v, list) and len(v) <= 5:
+                        result[k] = ', '.join(str(x) for x in v)
+                    elif isinstance(v, list):
+                        result[k] = f'[{len(v)} items]'
+                    elif isinstance(v, dict) and len(v) <= 3:
+                        result[k] = str(v)
+                    elif isinstance(v, dict):
+                        result[k] = f'{{{len(v)} keys}}'
+                return result
+        except Exception:
+            pass
+    return None
+
+
+# Dispatch table: (uri_pattern, resolver_function)
+_CURIE_RESOLVERS = [
+    ('purl.obolibrary.org/obo/', _describe_obo),
+    ('semanticscience.org/resource/', _describe_obo),  # SIO is in EBI OLS
+    ('orcid.org/', _describe_orcid),
+    ('ror.org/', _describe_ror),
+    ('doi.org/', _describe_doi),
+    ('spdx.org/licenses/', _describe_spdx),
+    ('id.loc.gov/vocabulary/relators/', _describe_marcrel),
+]
+
+
+def _resolve_curie_description(uri):
+    """Dispatch to the right resolver based on the URI pattern."""
+    for pattern, resolver in _CURIE_RESOLVERS:
+        if pattern in uri:
+            return resolver(uri)
+    return _describe_generic_jsonld(uri)
+
+
+@VisiData.api
+def describe_curie(vd, sheet):
+    """Expand current cell's CURIE, fetch description, show as sheet."""
+    val = sheet.cursorValue
+    if val is None or str(val).strip() == '':
+        vd.warning('empty cell')
+        return
+    url = _expand_curie(val)
+    if not url:
+        vd.warning(f'cannot expand: {val}')
+        return
+
+    @asyncthread
+    def _fetch_and_show(val, url):
+        vd.status(f'fetching {url} ...')
+        try:
+            info = _resolve_curie_description(url)
+        except urllib.error.HTTPError as e:
+            info = OrderedDict([
+                ('uri', url),
+                ('error', f'HTTP {e.code}: {e.reason}'),
+            ])
+        except Exception as e:
+            info = OrderedDict([
+                ('uri', url),
+                ('error', str(e)),
+            ])
+        if not info:
+            info = OrderedDict([
+                ('uri', url),
+                ('note', 'no machine-readable data found'),
+            ])
+        info = OrderedDict([('curie', str(val)), ('uri', url)]
+                           + list(info.items()))
+        vd.push(PyobjSheet(str(val), source=info))
+
+    _fetch_and_show(val, url)
+
+
+Sheet.addCommand(
+    '', 'describe-curie',
+    'vd.describe_curie(sheet)',
+    'fetch and display machine-readable description of CURIE in current cell',
+)
