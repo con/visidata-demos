@@ -421,3 +421,12 @@ Sheet.addCommand(
     'vd.describe_curie(sheet)',
     'fetch and display machine-readable description of CURIE in current cell',
 )
+
+
+# --- demo-say: show narration in status bar (for screencaster demos) ---
+
+Sheet.addCommand(
+    '', 'demo-say',
+    'vd.status(input("msg: "))',
+    'show demo narration in status bar',
+)
