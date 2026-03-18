@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+dtc get-records http://pool.psychoinformatics.de/api public > data.jsonl
