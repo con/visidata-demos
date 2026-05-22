@@ -1,0 +1,2 @@
+cd /home/yoh/proj/visidata-demos/bids2table-openneuro     # 0.02 sec
+export TERM=xterm-256color     # 0.03 sec

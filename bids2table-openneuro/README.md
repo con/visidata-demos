@@ -6,6 +6,8 @@ of every file currently in [OpenNeuro](https://openneuro.org), find which
 datasets contain the modalities or tasks you care about, and produce summary
 plots — all from a terminal, on a 2-million-row table, in a few keystrokes.
 
+[![demo](https://asciinema.org/a/oF1lYLKAZsCH2n12.svg)](https://asciinema.org/a/oF1lYLKAZsCH2n12)
+
 ## The data
 
 `tool-b2t2_archive-openneuro_date-20260521.parquet` is one row per BIDS file
@@ -59,13 +61,19 @@ It takes a few seconds to load the ~2M rows.
 
 ### 1. Tame the column count: hide empty columns
 
-Out of the gate, many columns (`tpl`, `cohort`, `nuc`, `voi`, `stain`, ...)
-are empty for the typical row — they exist for niche BIDS extensions.
+Out of 43 BIDS-entity columns, seven (`tpl`, `cohort`, `sample`, `nuc`,
+`stain`, `chunk`, `scale`) are **completely empty** across all of OpenNeuro —
+they exist for BIDS extensions no archived dataset uses. Another 20 are
+populated in less than 5% of files (`tracksys`, `voi`, `ce`, `trc`, `mod`,
+`flip`, `inv`, `mt`, `part`, `proc`, `hemi`, `space`, `split`, `recording`,
+`atlas`, `seg`, `res`, `den`, `label`, `rec`).
 
-    Space  hide-degenerate-cols   Enter
+    Space  hide-degenerate-cols   Enter         # drops 7 fully-empty cols
+    Space  hide-mostly-degenerate-cols  Enter   # drops 27 cols (<5% populated)
 
-You should drop from 43 visible columns to ~15. Pressing `Shift+V` on a column
-toggles wide view; `_` autosizes; `gv` re-shows everything.
+(Pressing `Shift+V` on a column toggles wide view; `_` autosizes; `gv`
+re-shows everything.) The real impact of `hide-degenerate-cols` comes
+*after* drilling into a single modality — see §4.
 
 ### 2. What modalities are in OpenNeuro? Frequency on `datatype`
 
@@ -142,3 +150,7 @@ dependencies (`xdotool`, `xterm`, `asciinema`).
 
     cast2asciinema demo-bids2table.sh output/
     asciinema play output/demo-bids2table.json
+
+To upload to asciinema.org and get a shareable badge URL:
+
+    asciinema upload output/demo-bids2table.json

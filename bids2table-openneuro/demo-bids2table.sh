@@ -31,24 +31,29 @@ run "export TERM=xterm-256color"
 say "Loading 2,065,565 rows from the bids2table Parquet ..."
 type "vd --config dot_visidatarc tool-b2t2_archive-openneuro_date-20260521.parquet"
 key Return
-sleep 8
+sleep 18
 
 # --- Orientation ---
 # Sheet stack: [main]  (depth 1)
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "2,065,565 files * 43 BIDS-entity columns -- most cells are empty"; key Return
-sleep 3
+sleep 4
 
 # --- Hide degenerate columns on the full table ---
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Even on the full table, several columns are entirely empty across OpenNeuro"; key Return
-sleep 3
+type "Sweep entirely-empty BIDS columns (tpl, cohort, sample, nuc, stain, chunk, scale)"; key Return
+sleep 4
 
 key space; sleep 0.5
 type "hide-degenerate-cols"; sleep 1; key Return
-sleep 5
+sleep 16
+
+key space; sleep 0.5
+type "demo-say"; sleep 1; key Return; sleep 0.5
+type "43 columns -> 36 -- those 7 BIDS extensions are unused across OpenNeuro"; key Return
+sleep 4
 
 # --- Frequency analysis on datatype ---
 key space; sleep 0.5
@@ -59,22 +64,22 @@ sleep 2
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "Frequency analysis on datatype (Shift+F) -- modality breakdown across OpenNeuro"; key Return
-sleep 3
+sleep 4
 
 key shift+f
-sleep 4
+sleep 12
 # Sheet stack: [main, freq-datatype]  (depth 2)
 
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "func dominates, then eeg, anat, dwi, fmap, ieeg, meg, perf, ..."; key Return
-sleep 4
+sleep 5
 
 # --- Plot the datatype frequency ---
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Render a matplotlib bar chart of the top datatypes"; key Return
-sleep 2
+type "Render a matplotlib bar chart PNG of the top datatypes"; key Return
+sleep 3
 
 key space; sleep 0.5
 type "plot-freq-png"; sleep 1; key Return
@@ -86,29 +91,29 @@ sleep 5
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "Drill into eeg files -- Enter on the eeg frequency row"; key Return
-sleep 3
+sleep 4
 
 key slash; sleep 0.5
 type "^eeg$"; key Return
 sleep 1
 
 key Return
-sleep 4
+sleep 6
 # Sheet stack: [main, freq-datatype, eeg-subset]  (depth 3)
 
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
-type "EEG subset -- which BIDS entities are actually populated here?"; key Return
-sleep 3
+type "EEG subset (586k rows) -- which BIDS entities are actually populated?"; key Return
+sleep 4
 
 key space; sleep 0.5
 type "hide-degenerate-cols"; sleep 1; key Return
-sleep 4
+sleep 12
 
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "Most of the 43 columns drop away -- EEG uses ~8 BIDS entities"; key Return
-sleep 4
+sleep 5
 
 # --- Back out to main ---
 # 2 q's: eeg-subset -> freq-datatype -> main
@@ -125,16 +130,16 @@ sleep 2
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "Frequency on task -- 2,857 distinct tasks across OpenNeuro"; key Return
-sleep 3
+sleep 4
 
 key shift+f
-sleep 5
+sleep 14
 # Sheet stack: [main, freq-task]  (depth 2)
 
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Top task: 'rest' -- which OpenNeuro datasets have resting-state data?"; key Return
-sleep 4
+type "Top task: rest -- which OpenNeuro datasets have resting-state data?"; key Return
+sleep 5
 
 # --- Dive into rest, then frequency on dataset ---
 key slash; sleep 0.5
@@ -142,7 +147,7 @@ type "^rest$"; key Return
 sleep 1
 
 key Return
-sleep 4
+sleep 6
 # Sheet stack: [main, freq-task, rest-subset]  (depth 3)
 
 key space; sleep 0.5
@@ -151,13 +156,13 @@ type "^dataset$"; key Return
 sleep 2
 
 key shift+f
-sleep 5
+sleep 10
 # Sheet stack: [main, freq-task, rest-subset, freq-dataset-of-rest]  (depth 4)
 
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "Datasets ranked by # of resting-state files -- ds######, sorted"; key Return
-sleep 4
+sleep 5
 
 # --- Plot the rest-by-dataset chart ---
 key space; sleep 0.5
@@ -170,11 +175,11 @@ sleep 5
 key space; sleep 0.5
 type "demo-say"; sleep 1; key Return; sleep 0.5
 type "open-openneuro -- jump to https://openneuro.org/datasets/<ds######>"; key Return
-sleep 3
+sleep 4
 
 key space; sleep 0.5
 type "open-openneuro"; sleep 1; key Return
-sleep 4
+sleep 5
 
 # --- Exit VisiData ---
 # 4 q's: freq-dataset-of-rest -> rest-subset -> freq-task -> main -> exit

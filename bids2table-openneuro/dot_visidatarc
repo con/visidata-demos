@@ -17,14 +17,29 @@ def _is_degenerate(v):
 
 
 def _hide_degenerate_cols(sheet, threshold=1.0):
-    """Hide columns where fraction of degenerate values >= threshold."""
+    """Hide columns where fraction of degenerate values >= threshold.
+
+    Short-circuits: for threshold=1.0 stops as soon as one non-degenerate
+    value is seen; for 0 < threshold < 1.0 stops once enough non-degenerate
+    values have been seen that the threshold can no longer be reached.
+    Keeps the operation snappy even on 2M-row sheets.
+    """
     nrows = len(sheet.rows)
     if nrows == 0:
         return
+    # max number of non-degenerate values we can tolerate and still hide
+    # (degenerate_count / nrows >= threshold)  <=>
+    # (non_degenerate_count <= nrows * (1 - threshold))
+    max_nondegen = int(nrows * (1.0 - threshold))
     hidden = 0
     for c in list(sheet.visibleCols):
-        ndegen = sum(1 for r in sheet.rows if _is_degenerate(c.getValue(r)))
-        if ndegen / nrows >= threshold:
+        nondegen = 0
+        for r in sheet.rows:
+            if not _is_degenerate(c.getValue(r)):
+                nondegen += 1
+                if nondegen > max_nondegen:
+                    break
+        if nondegen <= max_nondegen:
             c.hide()
             hidden += 1
     vd.status(f'hid {hidden} degenerate columns (threshold={threshold})')
