@@ -6,7 +6,12 @@ of every file currently in [OpenNeuro](https://openneuro.org), find which
 datasets contain the modalities or tasks you care about, and produce summary
 plots — all from a terminal, on a 2-million-row table, in a few keystrokes.
 
-[![demo](https://asciinema.org/a/oF1lYLKAZsCH2n12.svg)](https://asciinema.org/a/oF1lYLKAZsCH2n12)
+[![demo](https://asciinema.org/a/Lyu3LkdxrQaxx1y8.svg)](https://asciinema.org/a/Lyu3LkdxrQaxx1y8)
+
+The screencast above uses `demo-subset.parquet` — a 94k-row stratified sample
+that keeps modality and dataset diversity but stays responsive enough to
+record reliably. All commands work identically on the full 2,065,565-row
+file used in the walkthrough below.
 
 ## The data
 

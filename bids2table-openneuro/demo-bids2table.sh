@@ -2,191 +2,178 @@
 #
 # Screencaster demo: Exploring the OpenNeuro BIDS Index with VisiData
 #
-# Showcases bids2table over the entire OpenNeuro archive (2M+ files, 43
-# BIDS-entity columns) -- hiding empty columns, discovering which datasets
-# carry a given task/modality via frequency analysis, and plotting summary
-# stats.
+# Showcases bids2table over OpenNeuro -- hiding empty BIDS columns, discovering
+# which datasets carry a given task/modality via frequency analysis, and
+# plotting summary stats.
+#
+# For the screencast we use demo-subset.parquet -- a 94k-row stratified
+# sample of the full archive that keeps modality + dataset diversity but
+# stays snappy enough to record reliably. The full
+# tool-b2t2_archive-openneuro_date-20260521.parquet (2,065,565 rows) works
+# identically; the walkthrough in README.md is written for the full file.
 #
 # Terminal size: 144x34 (adjust cast2asciinema width/height or resize terminal)
 #
 # Prerequisites:
 #   - VisiData installed with pyarrow + pandas + matplotlib
-#       (e.g. uvx --from visidata --with pyarrow --with pandas --with matplotlib vd ...)
 #   - screencaster (https://github.com/datalad/screencaster) in PATH
-#   - tool-b2t2_archive-openneuro_date-20260521.parquet in working directory
+#   - demo-subset.parquet in working directory
 #   - dot_visidatarc with custom commands
 #
 # Usage:
 #   cd /path/to/bids2table-openneuro
 #   cast2asciinema demo-bids2table.sh output/
+#
+# Notes for stable recording:
+#   - `kspace` (defined below) sends Escape first, then Space -- this clears
+#     any half-typed command palette / leftover prompt before opening a fresh
+#     one, even if vd is mid-operation.
+#   - Sleeps after Shift+F, hide-degenerate-cols, and plot-freq-png are
+#     deliberately long; vd's command palette autocomplete and column scans
+#     are noticeably slow on parquet files.
 
-say "Exploring the OpenNeuro BIDS Index with VisiData -- 2 million BIDS files across the entire OpenNeuro archive, indexed with bids2table into a single Parquet table"
+# wrapper: Escape (clear any stale prompt) then Space (open command palette)
+kspace() {
+    key Escape; sleep 0.4
+    key space;  sleep 0.4
+}
 
-# cast_bash.rc cd's to SCREENCAST_HOME (/demo by default);
-# we need the project directory where data files live
+# wrapper: run a longname (Space + type + Return) with reset
+klong() {
+    kspace
+    type "$1"; sleep 0.6
+    key Return; sleep 0.4
+}
+
+# wrapper: demo-say a message
+ksay() {
+    klong "demo-say"
+    type "$1"; sleep 0.6
+    key Return
+    sleep 4
+}
+
+say "Exploring the OpenNeuro BIDS Index with VisiData -- a bids2table index of every file across OpenNeuro, stratified-sampled to 94k rows so the recording stays responsive"
+
 run "cd $PWD"
 run "export TERM=xterm-256color"
 
 # --- Launch VisiData ---
-say "Loading 2,065,565 rows from the bids2table Parquet ..."
-type "vd --config dot_visidatarc tool-b2t2_archive-openneuro_date-20260521.parquet"
+say "Loading demo-subset.parquet ..."
+type "vd --config dot_visidatarc demo-subset.parquet"
 key Return
-sleep 18
+sleep 8
 
-# --- Orientation ---
-# Sheet stack: [main]  (depth 1)
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "2,065,565 files * 43 BIDS-entity columns -- most cells are empty"; key Return
-sleep 4
+# === Phase 1: orientation + hide-degenerate ===
+ksay "94k BIDS files * 43 BIDS-entity columns -- most cells are empty"
+ksay "Sweep entirely-empty BIDS columns (tpl, cohort, sample, nuc, stain, ...)"
 
-# --- Hide degenerate columns on the full table ---
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Sweep entirely-empty BIDS columns (tpl, cohort, sample, nuc, stain, chunk, scale)"; key Return
-sleep 4
+klong "hide-degenerate-cols"
+sleep 8
 
-key space; sleep 0.5
-type "hide-degenerate-cols"; sleep 1; key Return
-sleep 16
+ksay "Several BIDS extensions are unused across OpenNeuro -- those columns are now hidden"
 
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "43 columns -> 36 -- those 7 BIDS extensions are unused across OpenNeuro"; key Return
-sleep 4
-
-# --- Frequency analysis on datatype ---
-key space; sleep 0.5
-type "go-col-regex"; sleep 1; key Return; sleep 0.5
-type "datatype"; key Return
-sleep 2
-
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Frequency analysis on datatype (Shift+F) -- modality breakdown across OpenNeuro"; key Return
-sleep 4
-
-key shift+f
-sleep 12
-# Sheet stack: [main, freq-datatype]  (depth 2)
-
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "func dominates, then eeg, anat, dwi, fmap, ieeg, meg, perf, ..."; key Return
-sleep 5
-
-# --- Plot the datatype frequency ---
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Render a matplotlib bar chart PNG of the top datatypes"; key Return
+# === Phase 2: frequency analysis on datatype ===
+klong "go-col-regex"
+type "^datatype$"; sleep 0.6
+key Return
 sleep 3
 
-key space; sleep 0.5
-type "plot-freq-png"; sleep 1; key Return
-sleep 1
-type "15"; key Return
-sleep 5
+ksay "Frequency analysis on datatype (Shift+F) -- modality breakdown"
 
-# --- Dive into eeg subset and hide degenerate ---
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Drill into eeg files -- Enter on the eeg frequency row"; key Return
-sleep 4
+key Escape; sleep 0.4
+key shift+f
+sleep 8
+# Sheet stack: [main, freq-datatype]  (depth 2)
 
-key slash; sleep 0.5
-type "^eeg$"; key Return
-sleep 1
+ksay "func, eeg, anat, dwi, fmap, ieeg, meg, perf -- the OpenNeuro modality mix"
 
+# --- Plot the datatype frequency ---
+ksay "Render a matplotlib bar chart of the top datatypes"
+
+klong "plot-freq-png"
+type "15"; sleep 0.4
 key Return
 sleep 6
+
+# === Phase 3: drill into eeg subset and hide degenerate ===
+ksay "Drill into eeg files -- search for ^eeg$ then Enter"
+
+key Escape; sleep 0.4
+key slash; sleep 0.5
+type "^eeg$"; sleep 0.4
+key Return
+sleep 2
+
+key Return
+sleep 5
 # Sheet stack: [main, freq-datatype, eeg-subset]  (depth 3)
 
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "EEG subset (586k rows) -- which BIDS entities are actually populated?"; key Return
-sleep 4
+ksay "EEG subset -- now collapse the BIDS columns not used by EEG"
 
-key space; sleep 0.5
-type "hide-degenerate-cols"; sleep 1; key Return
-sleep 12
+klong "hide-degenerate-cols"
+sleep 8
 
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Most of the 43 columns drop away -- EEG uses ~8 BIDS entities"; key Return
-sleep 5
+ksay "Most of the 43 columns drop away -- EEG uses only ~8 BIDS entities"
 
-# --- Back out to main ---
-# 2 q's: eeg-subset -> freq-datatype -> main
-key q; sleep 1
-key q; sleep 1
+# Back out to main: eeg-subset -> freq-datatype -> main
+key Escape; sleep 0.4; key q; sleep 1.5
+key Escape; sleep 0.4; key q; sleep 1.5
 # Sheet stack: [main]  (depth 1)
 
-# --- Frequency analysis on task ---
-key space; sleep 0.5
-type "go-col-regex"; sleep 1; key Return; sleep 0.5
-type "^task$"; key Return
-sleep 2
+# === Phase 4: frequency on task, drill into rest, freq on dataset ===
+klong "go-col-regex"
+type "^task$"; sleep 0.6
+key Return
+sleep 3
 
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Frequency on task -- 2,857 distinct tasks across OpenNeuro"; key Return
-sleep 4
+ksay "Frequency on task -- thousands of distinct tasks across OpenNeuro"
 
+key Escape; sleep 0.4
 key shift+f
-sleep 14
+sleep 8
 # Sheet stack: [main, freq-task]  (depth 2)
 
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Top task: rest -- which OpenNeuro datasets have resting-state data?"; key Return
-sleep 5
+ksay "Top task: rest -- which OpenNeuro datasets carry resting-state data?"
 
-# --- Dive into rest, then frequency on dataset ---
+key Escape; sleep 0.4
 key slash; sleep 0.5
-type "^rest$"; key Return
-sleep 1
-
+type "^rest$"; sleep 0.4
 key Return
-sleep 6
-# Sheet stack: [main, freq-task, rest-subset]  (depth 3)
-
-key space; sleep 0.5
-type "go-col-regex"; sleep 1; key Return; sleep 0.5
-type "^dataset$"; key Return
 sleep 2
 
+key Return
+sleep 5
+# Sheet stack: [main, freq-task, rest-subset]  (depth 3)
+
+klong "go-col-regex"
+type "^dataset$"; sleep 0.6
+key Return
+sleep 3
+
+key Escape; sleep 0.4
 key shift+f
-sleep 10
+sleep 8
 # Sheet stack: [main, freq-task, rest-subset, freq-dataset-of-rest]  (depth 4)
 
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "Datasets ranked by # of resting-state files -- ds######, sorted"; key Return
-sleep 5
+ksay "Datasets ranked by # of resting-state files -- ds######, sorted"
 
-# --- Plot the rest-by-dataset chart ---
-key space; sleep 0.5
-type "plot-freq-png"; sleep 1; key Return
-sleep 1
-type "20"; key Return
-sleep 5
+klong "plot-freq-png"
+type "20"; sleep 0.4
+key Return
+sleep 6
 
-# --- Jump to the OpenNeuro page for the top dataset ---
-key space; sleep 0.5
-type "demo-say"; sleep 1; key Return; sleep 0.5
-type "open-openneuro -- jump to https://openneuro.org/datasets/<ds######>"; key Return
+# === Phase 5: open-openneuro on the top dataset ===
+ksay "open-openneuro -- jump to https://openneuro.org/datasets/<ds######>"
+
+klong "open-openneuro"
 sleep 4
 
-key space; sleep 0.5
-type "open-openneuro"; sleep 1; key Return
-sleep 5
-
-# --- Exit VisiData ---
-# 4 q's: freq-dataset-of-rest -> rest-subset -> freq-task -> main -> exit
-key q; sleep 1
-key q; sleep 1
-key q; sleep 1
-key q; sleep 1
+# === Exit VisiData: 4 q's to pop all sheets ===
+key Escape; sleep 0.4; key q; sleep 1.5
+key Escape; sleep 0.4; key q; sleep 1.5
+key Escape; sleep 0.4; key q; sleep 1.5
+key Escape; sleep 0.4; key q; sleep 1.5
 
 say "VisiData on bids2table -- discover what's in OpenNeuro from the terminal:"
 say "  hide-degenerate-cols -- collapse 43 BIDS columns to the ones in use"
