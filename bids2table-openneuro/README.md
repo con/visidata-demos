@@ -6,7 +6,7 @@ of every file currently in [OpenNeuro](https://openneuro.org), find which
 datasets contain the modalities or tasks you care about, and produce summary
 plots — all from a terminal, on a 2-million-row table, in a few keystrokes.
 
-[![demo](https://asciinema.org/a/Lyu3LkdxrQaxx1y8.svg)](https://asciinema.org/a/Lyu3LkdxrQaxx1y8)
+[![demo](https://asciinema.org/a/s40ivIIgieWO1lSN.svg)](https://asciinema.org/a/s40ivIIgieWO1lSN)
 
 The screencast above uses `demo-subset.parquet` — a 94k-row stratified sample
 that keeps modality and dataset diversity but stays responsive enough to
@@ -50,16 +50,18 @@ palette (`Space`):
 - **open-openneuro** — opens `https://openneuro.org/datasets/<ds######>` in a
   browser for the dataset ID under the cursor (works on `dataset` or `root`
   cells).
-- **plot-freq-png** — render a matplotlib bar chart of the current sheet's
-  top-N rows (uses the `count` column produced by `Shift+F`) and `xdg-open`
-  it. Better for screenshots than VisiData's built-in `.` plotter.
 - **demo-say** — show narration in the status bar (for screencaster demos).
+
+For visualisation we lean on VisiData's built-ins: the Frequency Sheet ships
+an inline ASCII `histogram` column, and `.` (`plot-column`) on a numeric
+column opens a Canvas plot. No matplotlib, no PNG — terminal demo, terminal
+output.
 
 ## Walkthrough
 
 > Install (uvx pulls everything fresh into a temp env):
 >
->     uvx --from 'visidata' --with pyarrow --with pandas --with matplotlib \
+>     uvx --from 'visidata' --with pyarrow --with pandas \
 >       vd --config dot_visidatarc tool-b2t2_archive-openneuro_date-20260521.parquet
 
 It takes a few seconds to load the ~2M rows.
@@ -138,15 +140,11 @@ shape of each modality's metadata.
 
 ### 5. Plot summary stats
 
-From any frequency sheet:
-
-    Space  plot-freq-png   Enter         # default: top 20
-
-Writes `/tmp/visidata-plot.png` and opens it. Great for slides and for
-cross-checking that the freq counts make sense.
-
-VisiData's built-in `.` works too on a numeric column — a quick in-terminal
-plot without leaving the keyboard.
+Frequency sheets already include an inline ASCII `histogram` column that
+draws horizontal bars next to each bin — visible without any extra
+command. For a fuller chart, press `.` (`plot-column`) on the `count`
+column to open a Canvas plot in the terminal; `q` returns to the freq
+sheet.
 
 ## Recording the demo
 
@@ -159,3 +157,38 @@ dependencies (`xdotool`, `xterm`, `asciinema`).
 To upload to asciinema.org and get a shareable badge URL:
 
     asciinema upload output/demo-bids2table.json
+
+## Verifying a recording
+
+`xdotool`-driven recordings are fragile: keystrokes can land while vd is
+mid-operation, error popups can absorb input, and you only find out the
+demo went sideways once a viewer points at the badge and says "this isn't
+what the README describes". To catch that here:
+
+    pip install pyte
+    ./verify-recording.py output/demo-bids2table.json \
+        --checkpoints demo-checkpoints.json
+
+[`verify-recording.py`](verify-recording.py) replays the cast through a
+headless VT100 emulator and does two things:
+
+1. **Error scan** — samples the screen every second and flags any line in
+   vd's bottom-right `statuses` popup (or the status bar) that looks like
+   a warning / exception / "must be" / "command not found" / `bash:
+   substitution failed` / Python tracebacks. Catches the case where vd
+   *ran your command but quietly threw a warning* you'd otherwise miss.
+2. **Checkpoint assertions** — at named timestamps in
+   [`demo-checkpoints.json`](demo-checkpoints.json), asserts that the
+   screen contains the sheet name / row count / status-bar text you
+   expect. Catches the case where keystrokes silently landed on the
+   wrong sheet.
+
+A clean recording yields:
+
+    [error scan]
+      no errors detected
+    [checkpoints]
+      PASS @ t=25s (vd loaded, main sheet)
+      PASS @ t=55s (after hide-degenerate-cols)
+      ...
+    verification passed

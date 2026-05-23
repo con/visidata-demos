@@ -1,0 +1,8 @@
+[
+  [25,  "vd loaded, main sheet",            ["93698 rows"]],
+  [55,  "after hide-degenerate-cols",       ["hid", "degenerate"]],
+  [100, "freq sheet on datatype",           ["datatype_freq"]],
+  [125, "eeg drill-in subset",              ["demo-subset_eeg"]],
+  [225, "freq sheet on dataset (of rest)",  ["rest_dataset_freq", "ds0"]],
+  [250, "clean exit",                       ["VisiData on bids2table"]]
+]

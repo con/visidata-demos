@@ -88,13 +88,7 @@ sleep 8
 
 ksay "func, eeg, anat, dwi, fmap, ieeg, meg, perf -- the OpenNeuro modality mix"
 
-# --- Plot the datatype frequency ---
-ksay "Render a matplotlib bar chart of the top datatypes"
-
-klong "plot-freq-png"
-type "15"; sleep 0.4
-key Return
-sleep 6
+ksay "The histogram column on the right is vd's built-in inline ASCII bar plot -- no extra command needed"
 
 # === Phase 3: drill into eeg subset and hide degenerate ===
 ksay "Drill into eeg files -- search for ^eeg$ then Enter"
@@ -156,12 +150,7 @@ key shift+f
 sleep 8
 # Sheet stack: [main, freq-task, rest-subset, freq-dataset-of-rest]  (depth 4)
 
-ksay "Datasets ranked by # of resting-state files -- ds######, sorted"
-
-klong "plot-freq-png"
-type "20"; sleep 0.4
-key Return
-sleep 6
+ksay "Datasets ranked by # of resting-state files -- ds######, sorted, with inline ASCII histogram"
 
 # === Phase 5: open-openneuro on the top dataset ===
 ksay "open-openneuro -- jump to https://openneuro.org/datasets/<ds######>"

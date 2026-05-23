@@ -75,12 +75,16 @@ def _open_openneuro(sheet):
         vd.warning(f'no openneuro dataset id (ds######) in: {val!r}')
         return
     url = f'https://openneuro.org/datasets/{m.group(1)}'
-    vd.status(f'opening {url}')
-    subprocess.Popen(
-        ['xdg-open', url],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        subprocess.Popen(
+            ['xdg-open', url],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        vd.status(f'opening {url}')
+    except FileNotFoundError:
+        # no xdg-open available -- just surface the URL the user can copy
+        vd.status(f'url: {url}  (xdg-open not installed)')
 
 
 Sheet.addCommand(
@@ -90,94 +94,12 @@ Sheet.addCommand(
 )
 
 
-# --- plot-freq-png: render a bar chart of the current Frequency sheet ---
-#
-# VisiData ships a built-in plotter (`.` on a numeric column), but a
-# matplotlib PNG with labelled axes is more legible for screenshots /
-# screencasts. Works on any sheet that has a `count` column (e.g. the
-# sheet produced by `Shift+F`); takes the top-N rows.
-
-import os
-import tempfile
-
-
-def _plot_freq_png(sheet, n=20, value_col=None, label_col=None):
-    """Render a matplotlib bar chart of the top-N rows.
-
-    By default uses the first column as labels and the `count` column as
-    values (matches VisiData's FreqSheet layout). Saves to a temp PNG
-    and opens via xdg-open.
-    """
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
-    cols = sheet.visibleCols
-    if not cols:
-        vd.warning('no visible columns')
-        return
-
-    if label_col is None:
-        label_col = cols[0]
-    else:
-        label_col = next((c for c in cols if c.name == label_col), cols[0])
-
-    if value_col is None:
-        value_col = next((c for c in cols if c.name == 'count'), None)
-        if value_col is None:
-            # fallback: first numeric-looking column other than the label
-            for c in cols[1:]:
-                try:
-                    float(c.getValue(sheet.rows[0]))
-                    value_col = c
-                    break
-                except (TypeError, ValueError):
-                    continue
-    else:
-        value_col = next((c for c in cols if c.name == value_col), None)
-
-    if value_col is None:
-        vd.warning('no numeric value column found (expected `count`)')
-        return
-
-    rows = sheet.rows[:n]
-    labels = [str(label_col.getValue(r)) for r in rows]
-    try:
-        values = [float(value_col.getValue(r) or 0) for r in rows]
-    except (TypeError, ValueError) as e:
-        vd.warning(f'non-numeric value column: {e}')
-        return
-
-    fig, ax = plt.subplots(figsize=(10, max(3, 0.35 * len(rows) + 1)))
-    ax.barh(range(len(rows)), values, color='#4c78a8')
-    ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels(labels)
-    ax.invert_yaxis()
-    ax.set_xlabel(value_col.name)
-    ax.set_title(f'{sheet.name}: top {len(rows)} by {value_col.name}')
-    for i, v in enumerate(values):
-        ax.text(v, i, f' {int(v):,}', va='center', fontsize=8)
-    fig.tight_layout()
-
-    out = os.path.join(tempfile.gettempdir(), 'visidata-plot.png')
-    fig.savefig(out, dpi=120)
-    plt.close(fig)
-    vd.status(f'wrote {out}')
-    subprocess.Popen(
-        ['xdg-open', out],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
-Sheet.addCommand(
-    '', 'plot-freq-png',
-    '_plot_freq_png(sheet, n=int(input("top N: ", value="20") or 20))',
-    'render a matplotlib bar chart PNG of the top-N rows (uses `count` col)',
-)
-
-
 # --- demo-say: show narration in status bar (for screencaster demos) ---
+#
+# Visualisation uses VisiData's built-ins: the Frequency Sheet ships an
+# inline `histogram` ASCII column, and `.` (plot-column) on a numeric
+# column opens a Canvas plot. No matplotlib / xdg-open shelling out --
+# this is a terminal demo, keep it in the terminal.
 
 Sheet.addCommand(
     '', 'demo-say',
