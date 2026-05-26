@@ -6,7 +6,7 @@ of every file currently in [OpenNeuro](https://openneuro.org), find which
 datasets contain the modalities or tasks you care about, and produce summary
 plots — all from a terminal, on a 2-million-row table, in a few keystrokes.
 
-[![demo](https://asciinema.org/a/s40ivIIgieWO1lSN.svg)](https://asciinema.org/a/s40ivIIgieWO1lSN)
+[![demo](https://asciinema.org/a/pnBWongSDTaESlFh.svg)](https://asciinema.org/a/pnBWongSDTaESlFh)
 
 The screencast above uses `demo-subset.parquet` — a 94k-row stratified sample
 that keeps modality and dataset diversity but stays responsive enough to
@@ -105,8 +105,6 @@ Navigate to the `datatype` column (`Space go-col-regex` → `datatype`) and hit
 | pet         |   5,011 |
 | motion      |   3,746 |
 
-(see `Space plot-freq-png` for a labelled bar-chart PNG of the above.)
-
 ### 3. Discover datasets with data of interest: drill into `task`
 
 Press `q` back to the main sheet, navigate to `task`, `Shift+F`. The top
@@ -140,11 +138,28 @@ shape of each modality's metadata.
 
 ### 5. Plot summary stats
 
-Frequency sheets already include an inline ASCII `histogram` column that
-draws horizontal bars next to each bin — visible without any extra
-command. For a fuller chart, press `.` (`plot-column`) on the `count`
-column to open a Canvas plot in the terminal; `q` returns to the freq
-sheet.
+VisiData's [graph documentation](https://www.visidata.org/docs/graph/) covers
+two terminal-native plotters; both are used here, no matplotlib involved:
+
+**Inline `histogram` column on the Frequency Sheet.** Every freq sheet
+(`Shift+F`) ships a `histogram` column that draws horizontal `■` bars
+proportional to each bin's count. No extra command — it's there as soon as
+you create the freq sheet. The screencast above relies on this.
+
+**Canvas plot via `.` (`plot-column`).** `.` opens a `GraphSheet` that
+renders points/lines in the terminal using Unicode block characters. It
+needs at least one numeric key column for the x-axis; on a freq sheet the
+default key is the categorical bin name, so the plot fails out of the box
+with `at least one numeric key col necessary for x-axis`. Two-step setup:
+
+    /count   Enter         # cursor onto the count column
+    !                      # toggle count as a (numeric) key column
+    /percent Enter         # cursor onto a different numeric column
+    .                      # plot percent (y) vs count (x), colored by bin
+
+`q` closes the Canvas back to the freq sheet. The screencast leaves this
+to the README rather than scripting it via xdotool — the keystroke sequence
+needs precise cursor state to work reliably under headless capture.
 
 ## Recording the demo
 

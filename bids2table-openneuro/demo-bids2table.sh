@@ -15,7 +15,7 @@
 # Terminal size: 144x34 (adjust cast2asciinema width/height or resize terminal)
 #
 # Prerequisites:
-#   - VisiData installed with pyarrow + pandas + matplotlib
+#   - VisiData installed with pyarrow + pandas
 #   - screencaster (https://github.com/datalad/screencaster) in PATH
 #   - demo-subset.parquet in working directory
 #   - dot_visidatarc with custom commands
@@ -28,7 +28,7 @@
 #   - `kspace` (defined below) sends Escape first, then Space -- this clears
 #     any half-typed command palette / leftover prompt before opening a fresh
 #     one, even if vd is mid-operation.
-#   - Sleeps after Shift+F, hide-degenerate-cols, and plot-freq-png are
+#   - Sleeps after Shift+F, hide-degenerate-cols, and the Canvas plot are
 #     deliberately long; vd's command palette autocomplete and column scans
 #     are noticeably slow on parquet files.
 
@@ -88,7 +88,9 @@ sleep 8
 
 ksay "func, eeg, anat, dwi, fmap, ieeg, meg, perf -- the OpenNeuro modality mix"
 
-ksay "The histogram column on the right is vd's built-in inline ASCII bar plot -- no extra command needed"
+ksay "Look at the histogram column on the right -- vd's built-in inline ASCII bar plot, no extra command needed"
+
+ksay "vd also has a Canvas plot at . (plot-column) -- requires a numeric key col, see README for setup"
 
 # === Phase 3: drill into eeg subset and hide degenerate ===
 ksay "Drill into eeg files -- search for ^eeg$ then Enter"
@@ -168,5 +170,5 @@ say "VisiData on bids2table -- discover what's in OpenNeuro from the terminal:"
 say "  hide-degenerate-cols -- collapse 43 BIDS columns to the ones in use"
 say "  Shift+F -- frequency analysis on any column (datatype, task, suffix, dataset)"
 say "  Enter on a freq row -- drill into the matching subset"
-say "  plot-freq-png -- matplotlib bar chart of the top-N rows"
+say "  histogram column on freq sheets -- inline ASCII bars, no extra command"
 say "  open-openneuro -- open the dataset page in the browser"

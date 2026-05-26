@@ -161,7 +161,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('cast')
     ap.add_argument('--checkpoints', help='JSON file with [[ts, label, [needles]], ...]')
-    ap.add_argument('--step', type=float, default=1.0, help='seconds between error-scan samples')
+    ap.add_argument('--step', type=float, default=0.5, help='seconds between error-scan samples')
     args = ap.parse_args()
 
     with open(args.cast) as f:
