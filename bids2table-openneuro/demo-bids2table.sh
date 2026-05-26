@@ -6,11 +6,14 @@
 # which datasets carry a given task/modality via frequency analysis, and
 # plotting summary stats.
 #
-# For the screencast we use demo-subset.parquet -- a 94k-row stratified
-# sample of the full archive that keeps modality + dataset diversity but
-# stays snappy enough to record reliably. The full
-# tool-b2t2_archive-openneuro_date-20260521.parquet (2,065,565 rows) works
-# identically; the walkthrough in README.md is written for the full file.
+# For the screencast we use demo-subset.parquet -- a ~22k-row proportional
+# 1% sample of the full archive (with a 100-row floor per datatype so rare
+# modalities stay visible). Proportional sampling means the headline
+# `Shift+F` on datatype shows realistic ratios (func > eeg > anat > ...),
+# not the artificial equal-count plateau you'd get from a flat per-datatype
+# cap. The full tool-b2t2_archive-openneuro_date-20260521.parquet
+# (2,065,565 rows) works identically; the walkthrough in README.md is
+# written for the full file.
 #
 # Terminal size: 144x34 (adjust cast2asciinema width/height or resize terminal)
 #
@@ -65,8 +68,8 @@ key Return
 sleep 8
 
 # === Phase 1: orientation + hide-degenerate ===
-ksay "94k BIDS files * 43 BIDS-entity columns -- most cells are empty"
-ksay "Sweep entirely-empty BIDS columns (tpl, cohort, sample, nuc, stain, ...)"
+ksay "22k BIDS files (1% stratified sample of OpenNeuro) * 43 BIDS-entity columns -- most cells are empty"
+ksay "Sweep BIDS columns that no archived OpenNeuro dataset populates (tpl, cohort, sample, nuc, stain, chunk, scale)"
 
 klong "hide-degenerate-cols"
 sleep 8
@@ -86,7 +89,7 @@ key shift+f
 sleep 8
 # Sheet stack: [main, freq-datatype]  (depth 2)
 
-ksay "func, eeg, anat, dwi, fmap, ieeg, meg, perf -- the OpenNeuro modality mix"
+ksay "func dominates, eeg close behind, then anat, figures, dwi, fmap, ieeg, meg, perf (figures+derivatives are bids2table folder labels, not BIDS modalities)"
 
 ksay "Look at the histogram column on the right -- vd's built-in inline ASCII bar plot, no extra command needed"
 

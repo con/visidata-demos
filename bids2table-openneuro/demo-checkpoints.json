@@ -1,8 +1,10 @@
 [
-  [25,  "vd loaded, main sheet",            ["93698 rows"]],
+  [25,  "vd loaded, main sheet",            ["22327 rows"]],
   [55,  "after hide-degenerate-cols",       ["hid", "degenerate"]],
-  [100, "freq sheet on datatype",           ["datatype_freq"]],
-  [125, "eeg drill-in subset",              ["demo-subset_eeg"]],
-  [225, "freq sheet on dataset (of rest)",  ["rest_dataset_freq", "ds0"]],
-  [250, "clean exit",                       ["VisiData on bids2table"]]
+  [105, "freq sheet on datatype",           ["demo-subset_datatype_freq"]],
+  [130, "eeg drill-in subset",              ["demo-subset_eeg", "5866 rows"]],
+  [145, "eeg subset after hide-deg",        ["hid", "degenerate"]],
+  [195, "rest drill-in subset",             ["demo-subset_rest"]],
+  [220, "freq sheet on dataset (of rest)",  ["rest_dataset_freq", "ds0"]],
+  [245, "clean exit",                       ["VisiData on bids2table"]]
 ]

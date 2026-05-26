@@ -6,12 +6,15 @@ of every file currently in [OpenNeuro](https://openneuro.org), find which
 datasets contain the modalities or tasks you care about, and produce summary
 plots — all from a terminal, on a 2-million-row table, in a few keystrokes.
 
-[![demo](https://asciinema.org/a/pnBWongSDTaESlFh.svg)](https://asciinema.org/a/pnBWongSDTaESlFh)
+[![demo](https://asciinema.org/a/nRtza9Csl6P3n20V.svg)](https://asciinema.org/a/nRtza9Csl6P3n20V)
 
-The screencast above uses `demo-subset.parquet` — a 94k-row stratified sample
-that keeps modality and dataset diversity but stays responsive enough to
-record reliably. All commands work identically on the full 2,065,565-row
-file used in the walkthrough below.
+The screencast above uses `demo-subset.parquet` — a ~22k-row proportional 1%
+sample of the full archive (100-row floor per datatype so rare modalities
+stay visible). Sampling proportionally rather than flat-per-datatype means
+the headline frequency plot shows real OpenNeuro ratios (`func` ≫ `eeg` >
+`anat` > ...) instead of an artificial equal-count plateau. All commands
+work identically on the full 2,065,565-row file used in the walkthrough
+below.
 
 ## The data
 
@@ -69,10 +72,12 @@ It takes a few seconds to load the ~2M rows.
 ### 1. Tame the column count: hide empty columns
 
 Out of 43 BIDS-entity columns, seven (`tpl`, `cohort`, `sample`, `nuc`,
-`stain`, `chunk`, `scale`) are **completely empty** across all of OpenNeuro —
-they exist for BIDS extensions no archived dataset uses. Another 20 are
-populated in less than 5% of files (`tracksys`, `voi`, `ce`, `trc`, `mod`,
-`flip`, `inv`, `mt`, `part`, `proc`, `hemi`, `space`, `split`, `recording`,
+`stain`, `chunk`, `scale`) are **completely empty** in this OpenNeuro
+snapshot — they are valid BIDS entities (`cohort` for cross-cohort
+studies, `sample` for microscopy under `micr/`, etc.) but no archived
+dataset in this snapshot exercises them. Another 20 are populated in
+less than 5% of files (`tracksys`, `voi`, `ce`, `trc`, `mod`, `flip`,
+`inv`, `mt`, `part`, `proc`, `hemi`, `space`, `split`, `recording`,
 `atlas`, `seg`, `res`, `den`, `label`, `rec`).
 
     Space  hide-degenerate-cols   Enter         # drops 7 fully-empty cols
@@ -87,23 +92,27 @@ re-shows everything.) The real impact of `hide-degenerate-cols` comes
 Navigate to the `datatype` column (`Space go-col-regex` → `datatype`) and hit
 `Shift+F` for a frequency table:
 
-| datatype    | count   |
-|-------------|--------:|
-| func        | 708,068 |
-| eeg         | 586,643 |
-| anat        | 175,717 |
-| figures     | 110,275 |
-| dwi         | 104,707 |
-| fmap        |  93,870 |
-| ieeg        |  57,149 |
-| meg         |  40,735 |
-| perf        |  36,906 |
-| beh         |  33,921 |
-| swi         |  24,265 |
-| derivatives |  13,206 |
-| nirs        |  10,928 |
-| pet         |   5,011 |
-| motion      |   3,746 |
+| datatype      | count   | notes                                      |
+|---------------|--------:|--------------------------------------------|
+| `func`        | 708,068 | fMRI (BOLD / sbref / events / physio)      |
+| `eeg`         | 586,643 |                                            |
+| `anat`        | 175,717 | T1w / T2w / FLAIR / etc.                   |
+| `figures`     | 110,275 | not a BIDS datatype — `derivatives/figures` folder surfaced by bids2table |
+| `dwi`         | 104,707 | diffusion (`.nii.gz` + `bvec`/`bval`)      |
+| `fmap`        |  93,870 | fieldmaps for fMRI/dwi unwarping           |
+| `ieeg`        |  57,149 | intracranial EEG                           |
+| `meg`         |  40,735 |                                            |
+| `perf`        |  36,906 | ASL perfusion                              |
+| `beh`         |  33,921 | behavioural data outside scanner           |
+| `swi`         |  24,265 | susceptibility-weighted imaging            |
+| `derivatives` |  13,206 | not a BIDS datatype — BIDS-Derivatives outputs |
+| `nirs`        |  10,928 | functional near-infrared spectroscopy      |
+| `pet`         |   5,011 |                                            |
+| `motion`      |   3,746 | head/body motion tracking                  |
+
+`figures` and `derivatives` aren't BIDS *modalities* — they're folders under
+`derivatives/` that bids2table surfaces as `datatype` values when indexing
+the archive. Filter them out when counting *raw* datasets.
 
 ### 3. Discover datasets with data of interest: drill into `task`
 
@@ -131,10 +140,14 @@ that modality then hide-degenerate:
 1. From the main sheet, navigate to `datatype`, `Shift+F`, `Enter` on `eeg`
 2. `Space hide-degenerate-cols`
 
-For EEG you'll see ~8 columns survive (`dataset`, `sub`, `ses`, `task`,
-`acq`, `run`, `suffix`, `ext`, `path`) — the rest of the 43-column BIDS
-schema is irrelevant to EEG. Repeat with `func`, `dwi`, etc. to learn the
-shape of each modality's metadata.
+For the EEG subset (`5,866` rows in the screencast sample, `586,643` in the
+full archive), `hide-degenerate-cols` hides ~18 of 43 columns. The 25 that
+survive include `dataset`, `sub`, `ses`, `task`, `acq`, `run`, `proc`,
+`space`, `recording`, `desc`, `suffix`, `ext`, `extra_entities`, `root`,
+`path` plus a handful of stray entities that appear in at least one EEG
+file across the archive. Use `hide-mostly-degenerate-cols` (≥95% empty) to
+get the leaner ~12-column "BIDS for EEG" view. Repeat with `func`, `dwi`,
+etc. to learn the shape of each modality's metadata.
 
 ### 5. Plot summary stats
 
