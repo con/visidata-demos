@@ -1,0 +1,41 @@
+From 6c8d1dce7190dfe6c6d3a79a6413b5efb683c642 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 20 Aug 2026 22:17:46 +0000
+Subject: [PATCH 2/2] Stop get_paginated() from looping forever past the last
+ page
+
+`get_paginated()` ends when the page it just read is the last one it wants:
+
+    if page == min(last_page, total_pages):
+
+If it is started beyond the end of the result set -- `dtc get-records
+--first-page 20` on a collection that has 14 pages -- that equality is never
+reached. The server answers each request with an empty page and a non-zero
+`pages`, none of the exit conditions apply, and the generator keeps asking for
+page 21, 22, ... indefinitely, hammering the service for results that do not
+exist.
+
+Compare with `>=` instead, so a start beyond the last page yields nothing and
+returns after a single request.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ dump_things_pyclient/communicate.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dump_things_pyclient/communicate.py b/dump_things_pyclient/communicate.py
+index 8cc2b95..76c9e21 100644
+--- a/dump_things_pyclient/communicate.py
++++ b/dump_things_pyclient/communicate.py
+@@ -226,7 +226,7 @@ def get_paginated(url: str,
+             (record, page, total_pages, page_size, total_items)
+             for record in result['items'])
+ 
+-        if page == min(last_page, total_pages):
++        if page >= min(last_page, total_pages):
+             return
+ 
+ 
+-- 
+2.43.0
+

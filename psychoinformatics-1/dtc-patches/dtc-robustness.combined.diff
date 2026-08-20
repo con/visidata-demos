@@ -1,0 +1,301 @@
+diff --git a/dump_things_pyclient/commands/dtc.py b/dump_things_pyclient/commands/dtc.py
+index 2ea2f74..2eb7129 100644
+--- a/dump_things_pyclient/commands/dtc.py
++++ b/dump_things_pyclient/commands/dtc.py
+@@ -5,6 +5,14 @@ from pathlib import Path
+ 
+ import rich_click as click
+ 
++from ..communicate import (
++    DEFAULT_BACKOFF_FACTOR,
++    DEFAULT_CONNECT_TIMEOUT,
++    DEFAULT_READ_TIMEOUT,
++    DEFAULT_RETRIES,
++    configure,
++)
++
+ 
+ dtc_plugins_dir = Path(__file__).parent / 'dtc_plugins'
+ 
+@@ -39,9 +47,55 @@ def load_subcommands(group):
+ @click.group()
+ @click.option('--token', envvar='DTC_TOKEN', default=None, help='provide a token on the command line, NOTE: on multiuser systems you should use the environment variable DTC_TOKEN instead')
+ @click.option('--debug', envvar='DTC_DEBUG', default=False, is_flag=True, help='show debug output')
++@click.option(
++    '--retries',
++    envvar='DTC_RETRIES',
++    type=click.IntRange(0),
++    default=DEFAULT_RETRIES,
++    show_default=True,
++    help='how often a request that failed with a connection error, a read error, or a retryable status code (429, 500, 502, 503, 504) is retried. Use 0 to disable retrying.',
++)
++@click.option(
++    '--retry-backoff',
++    envvar='DTC_RETRY_BACKOFF',
++    type=click.FLOAT,
++    default=DEFAULT_BACKOFF_FACTOR,
++    show_default=True,
++    help='backoff factor in seconds, the wait before the n-th retry is "<factor> * 2 ** (n - 1)" seconds',
++)
++@click.option(
++    '--connect-timeout',
++    envvar='DTC_CONNECT_TIMEOUT',
++    type=click.FLOAT,
++    default=DEFAULT_CONNECT_TIMEOUT,
++    show_default=True,
++    help='seconds to wait for a connection to the service to be established',
++)
++@click.option(
++    '--read-timeout',
++    envvar='DTC_READ_TIMEOUT',
++    type=click.FLOAT,
++    default=DEFAULT_READ_TIMEOUT,
++    show_default=True,
++    help='seconds to wait between two chunks of a response from the service',
++)
+ @click.pass_context
+-def cli(ctx, token: str, debug: bool):
++def cli(
++        ctx,
++        token: str,
++        debug: bool,
++        retries: int,
++        retry_backoff: float,
++        connect_timeout: float,
++        read_timeout: float,
++):
+     initialize_logging(debug)
++    configure(
++        retries=retries,
++        backoff_factor=retry_backoff,
++        connect_timeout=connect_timeout,
++        read_timeout=read_timeout,
++    )
+     ctx.obj = token
+ 
+ 
+diff --git a/dump_things_pyclient/communicate.py b/dump_things_pyclient/communicate.py
+index 53fbb85..76c9e21 100644
+--- a/dump_things_pyclient/communicate.py
++++ b/dump_things_pyclient/communicate.py
+@@ -2,15 +2,17 @@ from __future__ import annotations
+ 
+ import logging
+ import re
++from contextlib import contextmanager
+ from itertools import count
+ from typing import (
+     Callable,
+     Generator,
+ )
+ 
+-import requests
+ from requests import Session
++from requests.adapters import HTTPAdapter
+ from requests.exceptions import HTTPError
++from urllib3.util.retry import Retry
+ 
+ from . import JSON
+ 
+@@ -18,6 +20,7 @@ from . import JSON
+ __all__ = [
+     'HTTPError',
+     'JSON',
++    'configure',
+     'get_session',
+     'get_paginated',
+     'get',
+@@ -48,12 +51,139 @@ __all__ = [
+ logger = logging.getLogger('dump_things_pyclient')
+ 
+ 
+-def get_session() -> Session:
++# Defaults for outgoing requests. A server under load may refuse or stall
++# connections; without retries and timeouts a single such event aborts the
++# whole operation, which is painful for long-running ones like dumping a
++# large collection page by page.
++DEFAULT_RETRIES = 5
++DEFAULT_BACKOFF_FACTOR = 1.0
++DEFAULT_CONNECT_TIMEOUT = 30.0
++DEFAULT_READ_TIMEOUT = 300.0
++
++#: Status codes that are retried. Everything else is reported as it is, in
++#: particular client errors, which will not go away by asking again.
++RETRY_STATUS_CODES = (429, 500, 502, 503, 504)
++
++
++class _Defaults:
++    retries = DEFAULT_RETRIES
++    backoff_factor = DEFAULT_BACKOFF_FACTOR
++    connect_timeout = DEFAULT_CONNECT_TIMEOUT
++    read_timeout = DEFAULT_READ_TIMEOUT
++
++
++_defaults = _Defaults()
++
++
++def configure(retries: int | None = None,
++              backoff_factor: float | None = None,
++              connect_timeout: float | None = None,
++              read_timeout: float | None = None,
++              ) -> None:
++    """Set the defaults that `get_session()` uses for new sessions
++
++    This exists so that a front-end -- the `dtc` command line interface, for
++    example -- can set the connection behaviour once, without having to thread
++    it through every function in this module. Parameters that are `None` are
++    left unchanged. Sessions that already exist are not affected.
++
++    :param retries: how often a failed request is retried
++    :param backoff_factor: backoff factor for retries, in seconds
++    :param connect_timeout: timeout for establishing a connection, in seconds
++    :param read_timeout: timeout between received bytes, in seconds
++    """
++    if retries is not None:
++        _defaults.retries = retries
++    if backoff_factor is not None:
++        _defaults.backoff_factor = backoff_factor
++    if connect_timeout is not None:
++        _defaults.connect_timeout = connect_timeout
++    if read_timeout is not None:
++        _defaults.read_timeout = read_timeout
++
++
++class _TimeoutSession(Session):
++    """A `Session` that applies a default timeout to every request
++
++    `requests` has no timeout by default, so a server that accepts a connection
++    and then goes quiet keeps the client waiting indefinitely.
++    """
++    def __init__(self, timeout: tuple[float, float]):
++        super().__init__()
++        self.timeout = timeout
++
++    def request(self, *args, **kwargs):
++        kwargs.setdefault('timeout', self.timeout)
++        return super().request(*args, **kwargs)
++
++
++def get_session(retries: int | None = None,
++                backoff_factor: float | None = None,
++                connect_timeout: float | None = None,
++                read_timeout: float | None = None,
++                ) -> Session:
+     """Return a session that can be used to reuse connections
+ 
++    The session retries requests that failed with a connection error, a read
++    error, or one of the status codes in `RETRY_STATUS_CODES`, waiting
++    `backoff_factor * 2 ** (attempt - 1)` seconds in between, and honouring a
++    `Retry-After` header if the server sends one. Only requests with an
++    idempotent method are retried, i.e. `POST` is not.
++
++    Every request made through the session gets a default timeout, so that an
++    unresponsive server leads to an error instead of to an indefinite wait.
++
++    Parameters that are `None` fall back to the values set with `configure()`.
++
++    :param retries: [optional] how often a failed request is retried
++    :param backoff_factor: [optional] backoff factor for retries, in seconds
++    :param connect_timeout: [optional] timeout for establishing a connection
++    :param read_timeout: [optional] timeout between received bytes
++
+     :return: a Session-object that can be passed to most functions in this module
+     """
+-    return requests.Session()
++    retries = _defaults.retries if retries is None else retries
++    if backoff_factor is None:
++        backoff_factor = _defaults.backoff_factor
++    if connect_timeout is None:
++        connect_timeout = _defaults.connect_timeout
++    if read_timeout is None:
++        read_timeout = _defaults.read_timeout
++
++    session = _TimeoutSession(timeout=(connect_timeout, read_timeout))
++    adapter = HTTPAdapter(
++        max_retries=Retry(
++            total=retries,
++            connect=retries,
++            read=retries,
++            status=retries,
++            status_forcelist=RETRY_STATUS_CODES,
++            backoff_factor=backoff_factor,
++            # Let `raise_for_status()` report an exhausted retry, so that the
++            # error looks the same as it did without retrying.
++            raise_on_status=False,
++        ),
++    )
++    session.mount('http://', adapter)
++    session.mount('https://', adapter)
++    return session
++
++
++@contextmanager
++def _session_context(session: Session | None) -> Generator[Session, None, None]:
++    """Yield `session`, or a temporary session that is closed afterwards
++
++    This ensures that requests made without an explicit session get the same
++    retry and timeout behaviour as requests that are made with one.
++    """
++    if session is not None:
++        yield session
++        return
++    temporary_session = get_session()
++    try:
++        yield temporary_session
++    finally:
++        temporary_session.close()
+ 
+ 
+ def get_paginated(url: str,
+@@ -96,7 +226,7 @@ def get_paginated(url: str,
+             (record, page, total_pages, page_size, total_items)
+             for record in result['items'])
+ 
+-        if page == min(last_page, total_pages):
++        if page >= min(last_page, total_pages):
+             return
+ 
+ 
+@@ -790,8 +920,7 @@ def server(
+         (f'{service_url[:-1]}' if service_url.endswith('/') else service_url)
+         + '/server'
+     )
+-    method = session.get if session else requests.get
+-    return _do_request(method, url=url, token=None, params=None)
++    return _get_from_url(url, token=None, session=session)
+ 
+ 
+ def maintenance(
+@@ -829,8 +958,8 @@ def _get_from_url(url: str,
+                   params: dict[str, str] | None = None,
+                   session: Session | None = None,
+                   ) -> JSON:
+-    method = session.get if session else requests.get
+-    return _do_request(method, url, token, params=params)
++    with _session_context(session) as active_session:
++        return _do_request(active_session.get, url, token, params=params)
+ 
+ 
+ def _post_to_url(url: str,
+@@ -839,8 +968,8 @@ def _post_to_url(url: str,
+                  session: Session | None = None,
+                  **kwargs,
+                  ) -> JSON:
+-    method = session.post if session else requests.post
+-    return _do_request(method, url, token, params=params, **kwargs)
++    with _session_context(session) as active_session:
++        return _do_request(active_session.post, url, token, params=params, **kwargs)
+ 
+ 
+ def _delete_url(url: str,
+@@ -848,8 +977,8 @@ def _delete_url(url: str,
+                 params: dict[str, str] | None = None,
+                 session: Session | None = None,
+                 ) -> JSON:
+-    method = session.delete if session else requests.delete
+-    return _do_request(method, url, token, params=params)
++    with _session_context(session) as active_session:
++        return _do_request(active_session.delete, url, token, params=params)
+ 
+ 
+ def _do_request(method: Callable,
