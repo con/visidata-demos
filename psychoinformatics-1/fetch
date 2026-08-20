@@ -1,3 +1,188 @@
-#!/bin/sh
-set -eu
-dtc get-records http://pool.psychoinformatics.de/api public > data.jsonl
+#!/usr/bin/env python3
+"""Dump all public records of the psychoinformatics pool into data.jsonl.
+
+Invoked as `uvx --from dump-things-pyclient==X ./fetch` (see Makefile), so this
+runs inside the uvx environment and can import the client library directly.
+
+Why this is not just `dtc get-records <url> public > data.jsonl` any more:
+
+* the CLI issues plain `requests.get` calls with neither a timeout nor a retry
+  adapter, so a single slow or refused connection to a busy server aborts the
+  whole dump (urllib3 reports that as "Max retries exceeded" even though, with
+  requests' default `max_retries=0`, nothing was retried at all);
+* `--page-size` cannot be raised to amortize that: the CLI clamps it to
+  1..100, and the server clamps it as well (dump-things-service paginates with
+  fastapi-pagination's stock `Params`, i.e. `size = Query(50, ge=1, le=100)`),
+  so `size=1000` would just get a 422.
+
+So we drive the library's public API instead of its CLI, and add the two things
+it does not offer: a urllib3 retry policy with an explicit timeout, and an outer
+per-page retry loop -- a page that still fails is retried on its own, without
+re-fetching the pages already collected. Output is written to a temporary file
+and moved into place only once every page is in, so a failed run never leaves a
+truncated data.jsonl behind.
+
+Tunable via the environment:
+
+    DTC_SERVICE_URL     service base URL   (default http://pool.psychoinformatics.de/api)
+    DTC_COLLECTION      collection name    (default public)
+    DTC_PAGE_SIZE       records per page   (default 100, server maximum)
+    DTC_CONNECT_TIMEOUT connect timeout, s (default 30)
+    DTC_READ_TIMEOUT    read timeout, s    (default 120)
+    DTC_HTTP_RETRIES    urllib3 retries per request (default 5)
+    DTC_PAGE_RETRIES    additional whole-page attempts   (default 5)
+    DTC_BACKOFF         backoff factor for both, seconds (default 2.0)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from dump_things_pyclient.communicate import collection_read_records
+
+
+SERVICE_URL = os.environ.get('DTC_SERVICE_URL', 'http://pool.psychoinformatics.de/api')
+COLLECTION = os.environ.get('DTC_COLLECTION', 'public')
+PAGE_SIZE = int(os.environ.get('DTC_PAGE_SIZE', '100'))
+CONNECT_TIMEOUT = float(os.environ.get('DTC_CONNECT_TIMEOUT', '30'))
+READ_TIMEOUT = float(os.environ.get('DTC_READ_TIMEOUT', '120'))
+HTTP_RETRIES = int(os.environ.get('DTC_HTTP_RETRIES', '5'))
+PAGE_RETRIES = int(os.environ.get('DTC_PAGE_RETRIES', '5'))
+BACKOFF = float(os.environ.get('DTC_BACKOFF', '2.0'))
+BACKOFF_MAX = 120.0
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
+class _Session(requests.Session):
+    """A Session that applies a default timeout to every request.
+
+    `requests` has no timeout by default, which is how a busy server can park a
+    connect attempt for the OS-level ~130s before urllib3 ever sees an error.
+    """
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault('timeout', (CONNECT_TIMEOUT, READ_TIMEOUT))
+        return super().request(*args, **kwargs)
+
+
+def make_session() -> requests.Session:
+    session = _Session()
+    kwargs = dict(
+        total=HTTP_RETRIES,
+        connect=HTTP_RETRIES,
+        read=HTTP_RETRIES,
+        status=HTTP_RETRIES,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(['GET']),
+        backoff_factor=BACKOFF,
+        backoff_max=BACKOFF_MAX,
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    try:
+        retry = Retry(**kwargs)
+    except TypeError:
+        # urllib3 < 2 has no `backoff_max` keyword, only the class attribute.
+        kwargs.pop('backoff_max')
+        retry = Retry(**kwargs)
+        retry.BACKOFF_MAX = BACKOFF_MAX
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+
+def read_page(session: requests.Session, page: int) -> tuple[list, int | None]:
+    """Return the records of a single page, plus the reported total page count."""
+    records = []
+    total_pages = None
+    for record, _page, pages, _size, _total in collection_read_records(
+        service_url=SERVICE_URL,
+        collection=COLLECTION,
+        session=session,
+        page=page,
+        last_page=page,
+        size=PAGE_SIZE,
+    ):
+        records.append(record)
+        total_pages = pages
+    return records, total_pages
+
+
+def _is_permanent(exc: requests.RequestException) -> bool:
+    """True for client errors that will not go away by asking again."""
+    response = getattr(exc, 'response', None)
+    if response is None:
+        return False
+    return 400 <= response.status_code < 500 and response.status_code != 429
+
+
+def read_page_with_retries(session: requests.Session, page: int) -> tuple[list, int | None]:
+    for attempt in range(1, PAGE_RETRIES + 1):
+        try:
+            return read_page(session, page)
+        except requests.RequestException as exc:
+            if attempt == PAGE_RETRIES or _is_permanent(exc):
+                raise
+            delay = min(BACKOFF * 2 ** (attempt - 1), BACKOFF_MAX)
+            log(f'page {page}: attempt {attempt}/{PAGE_RETRIES} failed '
+                f'({exc.__class__.__name__}: {exc}); retrying in {delay:g}s')
+            time.sleep(delay)
+    raise AssertionError('unreachable')
+
+
+def collect(session: requests.Session, stream) -> int:
+    count = 0
+    page = 1
+    total_pages = None
+    while total_pages is None or page <= total_pages:
+        records, pages = read_page_with_retries(session, page)
+        if pages is not None:
+            total_pages = pages
+        for record in records:
+            stream.write(json.dumps(record, ensure_ascii=False) + '\n')
+        count += len(records)
+        log(f'page {page}/{total_pages if total_pages is not None else "?"}: '
+            f'{len(records)} records ({count} total)')
+        if total_pages is None:
+            # An empty first page: there is nothing to paginate over.
+            break
+        page += 1
+    return count
+
+
+def main() -> int:
+    output = sys.argv[1] if len(sys.argv) > 1 else 'data.jsonl'
+    tmp_output = output + '.tmp'
+
+    try:
+        with open(tmp_output, 'w', encoding='utf-8') as stream:
+            count = collect(make_session(), stream)
+        if count == 0:
+            raise RuntimeError('server returned no records')
+    except (requests.RequestException, RuntimeError, KeyboardInterrupt) as exc:
+        # Never leave a truncated dump behind -- the previous data.jsonl, if
+        # any, stays exactly as it was and the run can simply be repeated.
+        if os.path.exists(tmp_output):
+            os.unlink(tmp_output)
+        log(f'error: giving up: {exc.__class__.__name__}: {exc}')
+        log(f'{output} left untouched')
+        return 1
+
+    os.replace(tmp_output, output)
+    log(f'wrote {count} records to {output}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
