@@ -39,8 +39,3 @@ dependencies (xdotool, xterm, asciinema).
 SCREENCAST_HOME=/tmp/demo cast2asciinema demo-linkeddata.sh output/
 asciinema play output/demo-linkeddata.json
 ```
-## Patching
-
-[dtc-patches/](dtc-patches/) contains the potential patches to submit against
-dtc but for now it seems the need was eliminated through custom python
-fetch script.
